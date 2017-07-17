@@ -28,6 +28,11 @@ class CardcomSdk extends Component
     const TERMINAL_USERNAME_DEV = 'barak9611';
 
     /**
+     * @var bool $debug
+     */
+    public $debug = false;
+
+    /**
      * @var string $language
      * Valid values: he, en, ru, ar, fr, it, sp, pt
      */
@@ -136,9 +141,9 @@ class CardcomSdk extends Component
         $vars["Language"] =  $this->language;
         $vars['ProductName'] = $extraParams['productName'];
         $vars["APILevel"] = static::API_LEVEL;
-        $vars['SuccessRedirectUrl'] = $successUrl;
-        $vars['ErrorRedirectUrl'] = $errorUrl;
-        $vars['IndicatorUrl']  = $indicatorUrl;
+        $vars['SuccessRedirectUrl'] = $this->normalizeUrl($successUrl);
+        $vars['ErrorRedirectUrl'] = $this->normalizeUrl($errorUrl);
+        $vars['IndicatorUrl'] = $this->normalizeUrl($indicatorUrl);
         $vars['codepage'] = static::CODEPAGE;
 
         // Optional paramters
@@ -164,9 +169,8 @@ class CardcomSdk extends Component
             $result['success'] = true;
             $result['url'] = $res['url'];
         } else {
-            /**
-             * @todo Display/log error
-             */
+            $result['errorCode'] = $res['ResponseCode'];
+            $result['errorMessage'] = $res['Description'];
         }
 
         return $result;
@@ -186,18 +190,38 @@ class CardcomSdk extends Component
         curl_setopt($ch, CURLOPT_POSTFIELDS, $varsEncoded);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-        curl_setopt($ch, CURLOPT_FAILONERROR,true);
+        curl_setopt($ch, CURLOPT_FAILONERROR, true);
+
+        /**
+         * @link https://stackoverflow.com/questions/3757071/php-debugging-curl
+         */
+        if ($this->debug) {
+            curl_setopt($ch, CURLOPT_VERBOSE, true);
+            $verbose = fopen('php://temp', 'w+');
+            curl_setopt($ch, CURLOPT_STDERR, $verbose);
+        }
 
         $ret = curl_exec($ch);
-        $error = curl_error ($ch);
 
-        if( !empty($error)) {
-            throw new Exception(print_r($error, true));
+        if ($ret === FALSE) {
+            if ($this->debug) {
+                printf("cUrl error (#%d): %s<br>\n", curl_errno($ch), htmlspecialchars(curl_error($ch)));
+            } else {
+                $error = curl_error($ch);
+                throw new Exception(print_r($error, true));
+            }
+        }
+
+        if ($this->debug) {
+            rewind($verbose);
+            $verboseLog = stream_get_contents($verbose);
+            echo "Verbose information:\n<pre>", htmlspecialchars($verboseLog), "</pre>\n";
         }
 
         curl_close($ch);
-        $this->lastResponse = parse_str($ret);
-        return $this->lastResponse;
+
+        parse_str($ret, $this->lastResponse);
+        return $this->lastResponse ?: [];
     }
 
     /**

@@ -1,6 +1,6 @@
 <?php
 
-namespace mipotech\cardcom;
+namespace mipotech\cardcom\enums;
 
 use yii2mod\enum\helpers\BaseEnum;
 

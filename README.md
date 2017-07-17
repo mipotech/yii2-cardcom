@@ -55,7 +55,10 @@ use mipotech\cardcom\CardcomSdk;
 use mipotech\cardcom\enums\Currencies;
 use mipotech\cardcom\enums\OperationTypes;
 
-$cardcom = new CardcomSdk();
+$cardcom = new CardcomSdk([
+    //'debug' => false, defaults to false
+    //'testMode' => true, defaults to false
+]);
 ```
 
 ### Initiate a new low profile transaction

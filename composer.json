@@ -1,0 +1,25 @@
+{
+    "name" : "mipotech/yii2-cardcom",
+    "description" : "A Yii2 library the wraps the CardCom API functions",
+    "type" : "yii2-extension",
+    "keywords" : [
+        "yii2",
+        "extension"
+    ],
+    "license" : "MIT",
+    "authors" : [{
+        "name" : "Mipo Technologies Ltd.",
+        "email" : "chaim@mipo.co.il"
+    }],
+    "require" : {
+        "ext-curl": "*",
+        "php": ">=5.4.0",
+        "yii2mod/yii2-enum": "*",
+        "yiisoft/yii2" : "*"
+    },
+    "autoload" : {
+        "psr-4" : {
+            "mipotech\\cardcom\\" : ""
+        }
+    }
+}

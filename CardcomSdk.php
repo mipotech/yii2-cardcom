@@ -8,7 +8,9 @@ use yii\base\Exception;
 use yii\base\InvalidConfigException;
 use yii\helpers\Url;
 
-use mipotech\cardcom\enums\{Currencies, CancelTypes, OperationTypes};
+use mipotech\cardcom\enums\{
+    Currencies, CancelTypes, OperationTypes
+};
 
 
 /**
@@ -87,17 +89,6 @@ class CardcomSdk extends Component
     }
 
     /**
-     * Extract the low profile code from the response
-     * @return string
-     */
-    public function getLowprofileCode(): string
-    {
-        $parts = parse_url($this->url);
-        parse_str($parts['query'], $query);
-        return $lastResponse['LowProfileCode'] ?? '';
-    }
-
-    /**
      * Perform a payment request
      *
      * @param float $sum the total amount to charge
@@ -125,7 +116,7 @@ class CardcomSdk extends Component
             'success' => false,
             'url' => null,
         ];
-        $vars =  [];
+        $vars = [];
 
         // Validate data
         if (!Currencies::isValidValue($currency)) {
@@ -134,11 +125,11 @@ class CardcomSdk extends Component
 
         // Required paramters
         $vars["Operation"] = $operation;
-        $vars['TerminalNumber'] = ($this->testMode ? static::TERMINAL_ID_DEV : $this->terminalNumber);
-        $vars['UserName'] = ($this->testMode ? static::TERMINAL_USERNAME_DEV : $this->username);
-        $vars["SumToBill"] = ($this->testMode ? 20 : $sum);
+        $vars['TerminalNumber'] = $this->getTerminalNumber();
+        $vars['UserName'] = $this->getUserName();
+        $vars["SumToBill"] = ($this->testMode ? 10.5 : $sum);
         $vars["CoinID"] = $currency;
-        $vars["Language"] =  $this->language;
+        $vars["Language"] = $this->language;
         $vars['ProductName'] = $extraParams['productName'];
         $vars["APILevel"] = static::API_LEVEL;
         $vars['SuccessRedirectUrl'] = $this->normalizeUrl($successUrl);
@@ -163,8 +154,35 @@ class CardcomSdk extends Component
         if (isset($extraParams['returnValue'])) {
             $vars["ReturnValue"] = $extraParams['returnValue'];
         }
+        if (isset($extraParams['InvoiceOperationTypes'])) {
+            $vars['InvoiceHeadOperation'] = $extraParams['InvoiceOperationTypes'];
+
+            if ($extraParams['InvoiceOperationTypes'] != \mipotech\cardcom\enums\InvoiceOperationTypes::NO_CREATE) {
+                $vars['InvoiceHead.CustName'] = $extraParams['InvoiceCustName'];
+                $vars['InvoiceHead.SendByEmail'] = $extraParams['SendInvoiceByEmail'];
+                $vars['InvoiceHead.Language'] = $this->language;
+                $vars['InvoiceHead.CoinID'] = $currency;
+                if ($extraParams['SendInvoiceByEmail']) {
+                    $vars['InvoiceHead.Email'] = $extraParams['SendInvoiceToEmail'];
+                }
+                foreach ($extraParams['InvoiceLines'] as $index => $invoiceLine) {
+                    $vars['InvoiceLines'.($index + 1).'.Description'] = $invoiceLine['Description'];
+                    $vars['InvoiceLines'.($index + 1).'.Price'] = $invoiceLine['Price'];
+                    $vars['InvoiceLines'.($index + 1).'.Quantity'] = $invoiceLine['Quantity'];
+                    $vars['InvoiceLines'.($index + 1).'.IsPriceIncludeVAT'] = $invoiceLine['IsPriceIncludeVAT'];
+                    if ($invoiceLine['ProductID']){
+                        $vars['InvoiceLines.'.($index + 1).'ProductID'] = $invoiceLine['ProductID'];
+                    }
+                    if ($invoiceLine['IsVatFree']){
+                        $vars['InvoiceLines.'.($index + 1).'IsVatFree'] = $invoiceLine['IsVatFree'];
+                    }
+                }
+            }
+        }
 
         $res = $this->doRequest('https://secure.cardcom.co.il/Interface/LowProfile.aspx', $vars);
+        Yii::info("Response: " . print_r($res, true), __CLASS__);
+
         if ($res['ResponseCode'] == "0") {
             $result['success'] = true;
             $result['url'] = $res['url'];
@@ -176,21 +194,36 @@ class CardcomSdk extends Component
         return $result;
     }
 
+    public function getLowProfileIndicator($lowProfileCode)
+    {
+        $vars = [];
+        $vars['terminalnumber'] = $this->getTerminalNumber();
+        $vars['username'] = $this->getUserName();
+        $vars['lowprofilecode'] = $lowProfileCode;
+
+        $res = $this->doRequest('https://secure.cardcom.co.il/Interface/BillGoldGetLowProfileIndicator.aspx?', $vars,
+            'GET');
+        return $res;
+    }
+
     /*
      * Request
      */
-    protected function doRequest(string $endpoint, array $vars): array
+    protected function doRequest(string $endpoint, array $vars, string $method = 'POST'): array
     {
         $varsEncoded = http_build_query($vars);
-
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $endpoint);
-        curl_setopt($ch, CURLOPT_POST, 1);
+        if ($method == 'POST') {
+            curl_setopt($ch, CURLOPT_URL, $endpoint);
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $varsEncoded);
+        }
+        else{
+            curl_setopt($ch, CURLOPT_URL, $endpoint.$varsEncoded);
+        }
         curl_setopt($ch, CURLOPT_FAILONERROR, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $varsEncoded);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-        curl_setopt($ch, CURLOPT_FAILONERROR, true);
 
         /**
          * @link https://stackoverflow.com/questions/3757071/php-debugging-curl
@@ -203,7 +236,7 @@ class CardcomSdk extends Component
 
         $ret = curl_exec($ch);
 
-        if ($ret === FALSE) {
+        if ($ret === false) {
             if ($this->debug) {
                 printf("cUrl error (#%d): %s<br>\n", curl_errno($ch), htmlspecialchars(curl_error($ch)));
             } else {
@@ -237,5 +270,15 @@ class CardcomSdk extends Component
         } elseif (is_array($url)) {
             return \yii\helpers\Url::to($url, true);
         }
+    }
+
+    public function getTerminalNumber()
+    {
+        return $this->testMode ? static::TERMINAL_ID_DEV : $this->terminalNumber;
+    }
+
+    public function getUserName()
+    {
+        return $this->testMode ? static::TERMINAL_USERNAME_DEV : $this->username;
     }
 }

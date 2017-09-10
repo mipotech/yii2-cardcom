@@ -53,7 +53,7 @@ class CardcomSdk extends Component
     /**
      * @var int $terminalNumber the production terminal number
      */
-    protected $terminalNumber;
+    public $terminalNumber;
 
     /**
      * @var string $username the production username
@@ -127,7 +127,7 @@ class CardcomSdk extends Component
         $vars["Operation"] = $operation;
         $vars['TerminalNumber'] = $this->getTerminalNumber();
         $vars['UserName'] = $this->getUserName();
-        $vars["SumToBill"] = ($this->testMode ? 10.5 : $sum);
+        $vars["SumToBill"] = ($this->testMode ? 20 : $sum);
         $vars["CoinID"] = $currency;
         $vars["Language"] = $this->language;
         $vars['ProductName'] = $extraParams['productName'];
@@ -212,6 +212,7 @@ class CardcomSdk extends Component
     protected function doRequest(string $endpoint, array $vars, string $method = 'POST'): array
     {
         $varsEncoded = http_build_query($vars);
+//print_r($varsEncoded);exit;
         $ch = curl_init();
         if ($method == 'POST') {
             curl_setopt($ch, CURLOPT_URL, $endpoint);
@@ -281,4 +282,14 @@ class CardcomSdk extends Component
     {
         return $this->testMode ? static::TERMINAL_USERNAME_DEV : $this->username;
     }
+	
+	public function getLowprofilecode(){
+		if($this->lastResponse && $this->lastResponse['url']){
+			$parts = parse_url($this->lastResponse['url']);
+			parse_str($parts['query'], $query);
+			return $query['LowProfileCode'];
+		} else {
+			return null;
+		}
+	}
 }

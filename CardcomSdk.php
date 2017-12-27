@@ -44,17 +44,14 @@ class CardcomSdk extends Component
      * @var bool $testMode whether to run this SDK in sandbox mode or not
      */
     public $testMode = false;
-
-    /**
-     * @var array $lastResponse the contents of the response from the last request
-     */
-    protected $lastResponse;
-
     /**
      * @var int $terminalNumber the production terminal number
      */
     public $terminalNumber;
-
+    /**
+     * @var array $lastResponse the contents of the response from the last request
+     */
+    protected $lastResponse;
     /**
      * @var string $username the production username
      */
@@ -166,15 +163,15 @@ class CardcomSdk extends Component
                     $vars['InvoiceHead.Email'] = $extraParams['SendInvoiceToEmail'];
                 }
                 foreach ($extraParams['InvoiceLines'] as $index => $invoiceLine) {
-                    $vars['InvoiceLines'.($index + 1).'.Description'] = $invoiceLine['Description'];
-                    $vars['InvoiceLines'.($index + 1).'.Price'] = $invoiceLine['Price'];
-                    $vars['InvoiceLines'.($index + 1).'.Quantity'] = $invoiceLine['Quantity'];
-                    $vars['InvoiceLines'.($index + 1).'.IsPriceIncludeVAT'] = $invoiceLine['IsPriceIncludeVAT'];
-                    if ($invoiceLine['ProductID']){
-                        $vars['InvoiceLines.'.($index + 1).'ProductID'] = $invoiceLine['ProductID'];
+                    $vars['InvoiceLines' . ($index + 1) . '.Description'] = $invoiceLine['Description'];
+                    $vars['InvoiceLines' . ($index + 1) . '.Price'] = $invoiceLine['Price'];
+                    $vars['InvoiceLines' . ($index + 1) . '.Quantity'] = $invoiceLine['Quantity'];
+                    $vars['InvoiceLines' . ($index + 1) . '.IsPriceIncludeVAT'] = $invoiceLine['IsPriceIncludeVAT'];
+                    if ($invoiceLine['ProductID']) {
+                        $vars['InvoiceLines.' . ($index + 1) . 'ProductID'] = $invoiceLine['ProductID'];
                     }
-                    if ($invoiceLine['IsVatFree']){
-                        $vars['InvoiceLines.'.($index + 1).'IsVatFree'] = $invoiceLine['IsVatFree'];
+                    if ($invoiceLine['IsVatFree']) {
+                        $vars['InvoiceLines.' . ($index + 1) . 'IsVatFree'] = $invoiceLine['IsVatFree'];
                     }
                 }
             }
@@ -194,21 +191,35 @@ class CardcomSdk extends Component
         return $result;
     }
 
-    public function getLowProfileIndicator($lowProfileCode)
+    public function getTerminalNumber()
     {
-        $vars = [];
-        $vars['terminalnumber'] = $this->getTerminalNumber();
-        $vars['username'] = $this->getUserName();
-        $vars['lowprofilecode'] = $lowProfileCode;
+        return $this->testMode ? static::TERMINAL_ID_DEV : $this->terminalNumber;
+    }
 
-        $res = $this->doRequest('https://secure.cardcom.co.il/Interface/BillGoldGetLowProfileIndicator.aspx?', $vars,
-            'GET');
-        return $res;
+    public function getUserName()
+    {
+        return $this->testMode ? static::TERMINAL_USERNAME_DEV : $this->username;
     }
 
     /*
      * Request
      */
+
+    /**
+     * Normalize the URL as a string
+     *
+     * @param mixed $url
+     * @return string
+     */
+    protected function normalizeUrl($url): string
+    {
+        if (is_string($url)) {
+            return $url;
+        } elseif (is_array($url)) {
+            return \yii\helpers\Url::to($url, true);
+        }
+    }
+
     protected function doRequest(string $endpoint, array $vars, string $method = 'POST'): array
     {
         $varsEncoded = http_build_query($vars);
@@ -218,9 +229,8 @@ class CardcomSdk extends Component
             curl_setopt($ch, CURLOPT_URL, $endpoint);
             curl_setopt($ch, CURLOPT_POST, 1);
             curl_setopt($ch, CURLOPT_POSTFIELDS, $varsEncoded);
-        }
-        else{
-            curl_setopt($ch, CURLOPT_URL, $endpoint.$varsEncoded);
+        } else {
+            curl_setopt($ch, CURLOPT_URL, $endpoint . $varsEncoded);
         }
         curl_setopt($ch, CURLOPT_FAILONERROR, true);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -258,38 +268,48 @@ class CardcomSdk extends Component
         return $this->lastResponse ?: [];
     }
 
-    /**
-     * Normalize the URL as a string
-     *
-     * @param mixed $url
-     * @return string
-     */
-    protected function normalizeUrl($url): string
+    public function getLowProfileIndicator($lowProfileCode)
     {
-        if (is_string($url)) {
-            return $url;
-        } elseif (is_array($url)) {
-            return \yii\helpers\Url::to($url, true);
+        $vars = [];
+        $vars['terminalnumber'] = $this->getTerminalNumber();
+        $vars['username'] = $this->getUserName();
+        $vars['lowprofilecode'] = $lowProfileCode;
+
+        $res = $this->doRequest('https://secure.cardcom.co.il/Interface/BillGoldGetLowProfileIndicator.aspx?', $vars,
+            'GET');
+        return $res;
+    }
+
+    public function chargeToken(
+        $token,
+        $validityMonth,
+        $validityYear,
+        $sumToBill,
+        $identityNumber,
+        $refundInsteadOfCharge = false
+    ) {
+        $vars = [];
+        $vars['terminalnumber'] = $this->getTerminalNumber();
+        $vars['username'] = $this->getUserName();
+        $vars['TokenToCharge.Token'] = $token;
+        $vars['TokenToCharge.CardValidityMonth'] = $validityMonth;
+        $vars['TokenToCharge.CardValidityYear'] = $validityYear;
+        $vars['TokenToCharge.SumToBill'] = $sumToBill;
+        $vars['TokenToCharge.IdentityNumber'] = $identityNumber;
+        $vars['TokenToCharge.RefundInsteadOfCharge'] = $refundInsteadOfCharge;
+
+        $res = $this->doRequest('https://secure.cardcom.co.il/interface/ChargeToken.aspx', $vars, 'POST');
+        return $res;
+    }
+
+    public function getLowprofilecode()
+    {
+        if ($this->lastResponse && $this->lastResponse['url']) {
+            $parts = parse_url($this->lastResponse['url']);
+            parse_str($parts['query'], $query);
+            return $query['LowProfileCode'];
+        } else {
+            return null;
         }
     }
-
-    public function getTerminalNumber()
-    {
-        return $this->testMode ? static::TERMINAL_ID_DEV : $this->terminalNumber;
-    }
-
-    public function getUserName()
-    {
-        return $this->testMode ? static::TERMINAL_USERNAME_DEV : $this->username;
-    }
-	
-	public function getLowprofilecode(){
-		if($this->lastResponse && $this->lastResponse['url']){
-			$parts = parse_url($this->lastResponse['url']);
-			parse_str($parts['query'], $query);
-			return $query['LowProfileCode'];
-		} else {
-			return null;
-		}
-	}
 }
